@@ -34,13 +34,12 @@ def solve_prize_equation(prize, button_a, button_b):
     eq_y = Eq(prize[1], A_presses * button_a[1] + B_presses * button_b[1])
 
     # Solve the equations
-    solutions = solve((eq_x, eq_y), (A_presses, B_presses), dict=True)
-    if not solutions:
+    sol = solve((eq_x, eq_y), (A_presses, B_presses), dict=True)
+
+    if not sol:
         return None
 
-    min_cost_sol = min([(s[A_presses], s[B_presses]) for s in solutions], key=Cost)
-
-    return min_cost_sol
+    return sol[0][A_presses], sol[0][B_presses]
 
 
 total = 0
