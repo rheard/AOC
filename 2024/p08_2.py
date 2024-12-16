@@ -25,7 +25,7 @@ def find_anti_nodes(points, max_x, max_y):
             if i == j:  # Avoid comparing the point with itself
                 continue
 
-            # Calculate difference
+            # Calculate slope
             mx, my = x1 - x2, y1 - y2
 
             for k in count(0):

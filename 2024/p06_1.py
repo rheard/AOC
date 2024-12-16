@@ -40,5 +40,5 @@ while True:
     data[y][x] = 'X'
     x, y = next_spot
 
-total = sum(r.count('X') for r in data)  # 4938     664   666      665        4939
+total = sum(r.count('X') for r in data)
 print(total)

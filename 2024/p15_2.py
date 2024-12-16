@@ -33,8 +33,8 @@ def next_pos(direction, pos_x, pos_y):
     near_positions = {
         '<': (pos_x - 1, pos_y),  # Left
         '>': (pos_x + 1, pos_y),  # Right
-        '^': (pos_x, pos_y - 1),  # Bottom
-        'v': (pos_x, pos_y + 1),  # Top
+        '^': (pos_x, pos_y - 1),  # Up
+        'v': (pos_x, pos_y + 1),  # Down
     }
     return near_positions[direction]
 
