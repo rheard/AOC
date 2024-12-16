@@ -23,9 +23,6 @@ with open('p13.txt', 'r') as file:
 
 
 # Step 2: Solve the problem
-Cost = lambda sol: sol[0] * 3 + sol[1] * 1
-
-
 def solve_prize_equation(prize, button_a, button_b):
     """Solve the equation (for both X and Y): Prize = A * A_presses + B * B_presses"""
     A_presses, B_presses = symbols('A_presses B_presses', integer=True, nonnegative=True)
@@ -48,8 +45,8 @@ for entry in data:
     button_a = (entry['Button A'][0], entry['Button A'][1])
     button_b = (entry['Button B'][0], entry['Button B'][1])
 
-    solution = solve_prize_equation(prize, button_a, button_b)
-    if solution:
-        total += Cost(solution)
+    s = solve_prize_equation(prize, button_a, button_b)
+    if s:
+        total += s[0] * 3 + s[1] * 1
 
 print(total)

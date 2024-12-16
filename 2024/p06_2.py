@@ -3,6 +3,24 @@ from collections import defaultdict
 with open('p06.txt') as rb:
     data = [list(l) for l in rb]
 
+
+def next_pos(direction, pos_x, pos_y):
+    near_positions = {
+        '<': (pos_x - 1, pos_y),  # Left
+        '>': (pos_x + 1, pos_y),  # Right
+        '^': (pos_x, pos_y - 1),  # Up
+        'v': (pos_x, pos_y + 1),  # Down
+    }
+    return near_positions[direction]
+
+
+RIGHT_TURN = {
+    '<': '^',
+    '>': 'v',
+    '^': '>',
+    'v': '<',
+}
+
 start_x, start_y = 0, 0
 for start_y in range(len(data)):
     if '^' in data[start_y]:
@@ -13,31 +31,16 @@ def gets_stuck_in_loop(puzzle):
     previous_position_directions = defaultdict(lambda: defaultdict(set))
     x, y = start_x, start_y
 
-    direction = 'up'
+    direction = '^'
     while True:
-        if direction == 'up':
-            next_spot = (x, y - 1)
-        elif direction == 'down':
-            next_spot = (x, y + 1)
-        elif direction == 'left':
-            next_spot = (x - 1, y)
-        else:
-            next_spot = (x + 1, y)
+        next_spot = next_pos(direction, x, y)
 
         if next_spot[0] < 0 or next_spot[1] < 0 or next_spot[0] >= len(puzzle[0]) or next_spot[1] >= len(puzzle):
             return False
 
         next_spot_data = puzzle[next_spot[1]][next_spot[0]]
         if next_spot_data == '#':
-            if direction == 'up':
-                direction = 'right'
-            elif direction == 'right':
-                direction = 'down'
-            elif direction == 'down':
-                direction = 'left'
-            elif direction == 'left':
-                direction = 'up'
-
+            direction = RIGHT_TURN[direction]
             continue
 
         if direction in previous_position_directions[y][x]:
