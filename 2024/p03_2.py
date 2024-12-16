@@ -25,4 +25,5 @@ for match in split_data:
     int_matches = [(int(x), int(y)) for x, y in matches]
 
     total += sum(x * y for x, y in int_matches)
+
 print(total)

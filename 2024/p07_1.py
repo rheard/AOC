@@ -7,6 +7,7 @@ with open('p07.txt') as rb:
         num, targets = l.split(':')
         data.append((int(num), [int(x) for x in targets.strip().split(' ')]))
 
+
 def calculate_result(values, operators):
     result = values[0]
     for value, operator in zip(values[1:], operators):
@@ -16,6 +17,7 @@ def calculate_result(values, operators):
             result *= value
     return result
 
+
 total = 0
 for num, targets in data:
     for combo in product('*+', repeat=len(targets) - 1):
@@ -23,6 +25,5 @@ for num, targets in data:
         if calced_val == num:
             total += calced_val
             break
-
 
 print(total)

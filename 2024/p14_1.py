@@ -6,7 +6,6 @@ prod = lambda x: functools.reduce(operator.mul, x, 1)  # Like sum but for multip
 GRID_X = 101
 GRID_Y = 103
 
-
 # Step 1: Load data
 data_pattern = re.compile(r"p=(-?\d+),(-?\d+)\s+v=(-?\d+),(-?\d+)")
 data = []

@@ -18,4 +18,3 @@ for _ in range(25):
     blink(data)
 
 print(len(data))
-
