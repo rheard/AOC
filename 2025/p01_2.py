@@ -14,13 +14,13 @@ for move in movements:
 
     zero_points += movement // 100  # This was the annoying part I was missing; data contains rotations larger than 100
     movement %= 100
-
-    if modifier == 1 and (movement + position) >= 100 and not at_zero:
-        zero_points += 1
-    elif modifier == -1 and (position - movement) <= 0 and not at_zero:
-        zero_points += 1
-
     position += modifier * movement
+
+    if position >= 100 and not at_zero:
+        zero_points += 1
+    elif position <= 0 and not at_zero:
+        zero_points += 1
+
     position %= 100
     at_zero = position == 0
 
