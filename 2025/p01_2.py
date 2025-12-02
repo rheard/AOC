@@ -16,9 +16,7 @@ for move in movements:
     movement %= 100
     position += modifier * movement
 
-    if position >= 100 and not at_zero:
-        zero_points += 1
-    elif position <= 0 and not at_zero:
+    if (position >= 100 or position <= 0) and not at_zero:
         zero_points += 1
 
     position %= 100
