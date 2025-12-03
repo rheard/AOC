@@ -1,7 +1,7 @@
 def max_two_digits(digits):
     """Given a list of integers, return the largest number that can be formed by picking any two digits"""
     n = len(digits)
-    max_selection: list[int | None] = [None] * n  # max digit for location
+    max_selection: list[int | None] = [None] * (n - 1)  # max digit for location
     for i, digit in enumerate(digits[:-1]):
         max_selection[i] = digits[i + 1]
         for other_digit in digits[i + 2:]:
@@ -11,10 +11,6 @@ def max_two_digits(digits):
     for i in range(n - 1):
         tens = digits[i]
         ones = max_selection[i]
-
-        if ones is None:
-            continue
-
         candidate = tens * 10 + ones
         if candidate > best:
             best = candidate
