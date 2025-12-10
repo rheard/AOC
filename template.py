@@ -1,6 +1,6 @@
 # Step 1: Load data and format into data structure:
 with open("p01.txt") as rb:
-    rb.readlines()
+    entries = rb.readlines()
 
 
 # Step 2: Solve the problem
