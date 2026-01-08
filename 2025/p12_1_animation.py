@@ -220,18 +220,9 @@ def solve_with_trace(
     """
     board_size = width * height
 
-    total_needed = sum(counts[i] * shape_area(shapes[i]) for i in range(len(shapes)))
-    if total_needed > board_size:
-        yield ("fail", {})
-        return False
-
     instances: List[int] = []
     for i, c in enumerate(counts):
         instances.extend([i] * c)
-
-    if not instances:
-        yield ("success", {})
-        return True
 
     # Order instances: larger first, then fewer orientations first (constrained)
     instances.sort(
@@ -442,21 +433,16 @@ class PresentPackingDemo(Scene):
         self.play(FadeIn(sidebar_title), FadeIn(sidebar))
         self.wait(4 if region_idx == 0 else 2)
 
-        highlight = SurroundingRectangle(rows[0], buff=0.12).set_stroke(YELLOW, width=3)
-        self.play(Create(highlight))
-
         # Run trace + animate it
         placed_stack: List[Tuple[int, Tuple[int, ...]]] = []  # (shape_idx, indices) for quick clearing
 
         def set_cells(indices: Tuple[int, ...], color, opacity: float):
-            anims = []
-            for idx in indices:
-                anims.append(board_cells[idx].animate.set_fill(color, opacity=opacity))
-            return anims
+            return [board_cells[idx].animate.set_fill(color, opacity=opacity) for idx in indices]
 
         # Pre-map shape_idx -> sidebar row index
         shape_to_row = {s_idx: k for k, s_idx in enumerate(used_shape_indices)}
 
+        highlight = None
         ok_result: Optional[bool] = None
         ghost: Optional[VGroup] = None
 
@@ -466,12 +452,16 @@ class PresentPackingDemo(Scene):
                 s_idx = payload["shape_idx"]
                 if s_idx in shape_to_row:
                     target_row = rows[shape_to_row[s_idx]]
-                    self.play(
-                        highlight.animate.become(
-                            SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
-                        ),
-                        run_time=0.12
-                    )
+                    if highlight is None:
+                        highlight = SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
+                        self.play(Create(highlight))
+                    else:
+                        self.play(
+                            highlight.animate.become(
+                                SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
+                            ),
+                            run_time=0.12
+                        )
 
             elif event in ("try_oob", "try_overlap", "try_ok"):
                 # remove previous ghost
