@@ -423,7 +423,7 @@ class PresentPackingDemo(Scene):
         used_shape_indices = [i for i, c in enumerate(counts) if c > 0]
         for s_idx in used_shape_indices:
             icon = build_shape_icon(shapes[s_idx], cell_size=0.20)
-            label = Text(f"x{counts[s_idx]} (shape {s_idx})", font_size=24)
+            label = Text(f"x{counts[s_idx]} (shape {s_idx + 1})", font_size=24)
             row = VGroup(icon, label).arrange(RIGHT, buff=0.35)
             rows.append(row)
 
