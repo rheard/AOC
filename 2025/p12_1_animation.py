@@ -206,7 +206,7 @@ def solve_with_trace(
     step_limit: int = None,
     oob_padding: int = 0,          # how far outside to "try" for animation
     show_every_try: int = 1,       # 1 = show all tries, 5 = show 1/5 tries, etc.
-) -> Generator[Tuple[str, dict], None, bool]:
+) -> Generator[Tuple[str, dict], None, bool | None]:
     """
     Events:
       - focus_piece: {"instance_i": int, "shape_idx": int}
@@ -236,7 +236,7 @@ def solve_with_trace(
 
     steps = 0
 
-    def dfs(instance_i: int, used_mask: int) -> Generator[Tuple[str, dict], None, bool]:
+    def dfs(instance_i: int, used_mask: int) -> Generator[Tuple[str, dict], None, bool | None]:
         nonlocal steps
         if instance_i == len(instances):
             yield ("success", {})
@@ -258,7 +258,7 @@ def solve_with_trace(
             for oy in range(-oob_padding, height + oob_padding):
                 for ox in range(-oob_padding, width + oob_padding):
                     if step_limit and steps >= step_limit:
-                        return False
+                        return None
                     steps += 1
 
                     # throttle rendering if desired
@@ -297,12 +297,15 @@ def solve_with_trace(
                     if ok:
                         return True
 
+                    if ok is None:
+                        return None
+
                     yield ("backtrack", {"indices": tuple(inds), "shape_idx": s_idx, "instance_i": instance_i})
 
         return False
 
     ok = yield from dfs(0, 0)
-    if not ok:
+    if ok is False:
         yield ("fail", {})
     return ok
 
@@ -521,10 +524,10 @@ class PresentPackingDemo(Scene):
                 break
 
         # End marker
-        if ok_result:
+        if ok_result is True:
             mark = Text("✓", font_size=90, color=GREEN).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
             self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=GREEN), run_time=0.5)
-        else:
+        elif ok_result is False:
             mark = Text("✗", font_size=90, color=RED).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
             self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=RED), run_time=0.5)
 
