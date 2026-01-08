@@ -203,8 +203,8 @@ def solve_with_trace(
     shapes: List[Shape],
     counts: List[int],
     *,
-    step_limit: int = 2500,
-    oob_padding: int = 1,          # how far outside to "try" for animation
+    step_limit: int = None,
+    oob_padding: int = 0,          # how far outside to "try" for animation
     show_every_try: int = 1,       # 1 = show all tries, 5 = show 1/5 tries, etc.
 ) -> Generator[Tuple[str, dict], None, bool]:
     """
@@ -266,7 +266,7 @@ def solve_with_trace(
             # origins range extended by oob_padding so we can show "outside grid" tries
             for oy in range(-oob_padding, height + oob_padding):
                 for ox in range(-oob_padding, width + oob_padding):
-                    if steps >= step_limit:
+                    if step_limit and steps >= step_limit:
                         return False
                     steps += 1
 
@@ -461,8 +461,8 @@ class PresentPackingDemo(Scene):
         ghost: Optional[VGroup] = None
 
         time_multiplier = 5 if region_idx == 0 else 1
-        for event, payload in solve_with_trace(w, h, shapes, counts, step_limit=2500, oob_padding=1, show_every_try=1):
-            if event == "focus_piece" and highlight is not None:
+        for event, payload in solve_with_trace(w, h, shapes, counts):
+            if event == "focus_piece":
                 s_idx = payload["shape_idx"]
                 if s_idx in shape_to_row:
                     target_row = rows[shape_to_row[s_idx]]
