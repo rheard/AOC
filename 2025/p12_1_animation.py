@@ -7,7 +7,7 @@ import re
 from manim import (
     Scene, VGroup, Square, Text, Line, SurroundingRectangle,
     FadeIn, FadeOut, Create, Indicate, Circumscribe,
-    LEFT, RIGHT, UP, DOWN,
+    LEFT, RIGHT, UP, DOWN, ORIGIN,
     WHITE, BLACK, GREY_B, GREY_E, BLUE_C,
     RED, GREEN, YELLOW, BLUE, ORANGE, PURPLE, TEAL
 )
@@ -224,12 +224,6 @@ def solve_with_trace(
     for i, c in enumerate(counts):
         instances.extend([i] * c)
 
-    # Order instances: larger first, then fewer orientations first (constrained)
-    instances.sort(
-        key=lambda s_idx: (shape_area(shapes[s_idx]), -len(shapes[s_idx].orientations)),
-        reverse=True,
-    )
-
     suffix_area = [0] * (len(instances) + 1)
     for k in range(len(instances) - 1, -1, -1):
         suffix_area[k] = suffix_area[k + 1] + shape_area(shapes[instances[k]])
@@ -368,27 +362,20 @@ class PresentPackingDemo(Scene):
         with open(self.INPUT_PATH, "r", encoding="utf-8") as f:
             shapes, regions = parse_input(f.read())
 
-        title = Text("Present Packing", font_size=36, color=BLUE_C)
-        title.to_edge(UP)
-        self.play(FadeIn(title))
-        self.wait(2)
-
         for demo_i, region_idx in enumerate(self.DEMO_REGION_INDICES):
             w, h, counts = regions[region_idx]
             self.animate_region(shapes, w, h, counts, region_idx=region_idx)
 
             if demo_i != len(self.DEMO_REGION_INDICES) - 1:
                 # Transition between regions
-                self.play(title.animate.set_opacity(0.25))
                 self.wait(0.2)
-                self.play(title.animate.set_opacity(1.0))
 
         self.wait(0.6)
 
     def animate_region(self, shapes: List[Shape], w: int, h: int, counts: List[int], *, region_idx: int):
         # Layout frame: board (left) and sidebar (right)
-        subtitle = Text(f"Region {region_idx + 1}: {w}×{h}", font_size=30)
-        subtitle.next_to(self.mobjects[0], DOWN, buff=0.2)  # under title, near top
+        subtitle = Text(f"Region {region_idx + 1}: {w}×{h}", font_size=30, color=BLUE_C)
+        subtitle.to_edge(UP)
         self.play(FadeIn(subtitle, shift=DOWN * 0.1))
         self.wait(0.5)
 
@@ -426,13 +413,13 @@ class PresentPackingDemo(Scene):
         used_shape_indices = [i for i, c in enumerate(counts) if c > 0]
         for s_idx in used_shape_indices:
             icon = build_shape_icon(shapes[s_idx], cell_size=0.20)
-            label = Text(f"x{counts[s_idx]} (shape {s_idx + 1})", font_size=24)
+            label = Text(f"x {counts[s_idx]}", font_size=24)
             row = VGroup(icon, label).arrange(RIGHT, buff=0.35)
             rows.append(row)
 
         sidebar = VGroup(*rows).arrange(DOWN, aligned_edge=LEFT, buff=0.25)
-        sidebar.next_to(sidebar_title, DOWN, aligned_edge=LEFT, buff=0.35)
-        sidebar.to_edge(RIGHT, buff=0.8).shift(DOWN * 0.2)
+        sidebar.next_to(sidebar_title, DOWN, aligned_edge=ORIGIN, buff=0.35)
+        sidebar.to_edge(ORIGIN, buff=0.8).shift(DOWN * 0.2)
         self.play(FadeIn(sidebar_title), FadeIn(sidebar))
         self.wait(4 if region_idx == 0 else 2)
 
@@ -449,8 +436,8 @@ class PresentPackingDemo(Scene):
         ok_result: Optional[bool] = None
         ghost: Optional[VGroup] = None
 
-        time_multiplier = 5 if region_idx == 0 else 1
-        for event, payload in solve_with_trace(w, h, shapes, counts):
+        time_multiplier = 5 if region_idx == 0 else 0.5
+        for event, payload in solve_with_trace(w, h, shapes, counts, step_limit=10000):
             if event == "focus_piece":
                 s_idx = payload["shape_idx"]
                 if s_idx in shape_to_row:
@@ -524,17 +511,20 @@ class PresentPackingDemo(Scene):
                 break
 
         # End marker
+        to_remove = [subtitle, board, board_frame, sidebar_title, sidebar]
         if ok_result is True:
             mark = Text("✓", font_size=90, color=GREEN).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
             self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=GREEN), run_time=0.5)
+            to_remove.append(mark)
         elif ok_result is False:
             mark = Text("✗", font_size=90, color=RED).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
             self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=RED), run_time=0.5)
+            to_remove.append(mark)
+
+        if highlight is not None:
+            to_remove.append(highlight)
 
         self.wait(0.6)
 
         # Clean up region visuals before next region
-        to_remove = [subtitle, board, board_frame, sidebar_title, sidebar, mark]
-        if highlight is not None:
-            to_remove.append(highlight)
         self.play(*[FadeOut(m) for m in to_remove], run_time=0.35)
