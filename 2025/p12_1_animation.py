@@ -351,12 +351,18 @@ def build_shape_icon(shape: Shape, cell_size: float = 0.18) -> VGroup:
 
 
 class PresentPackingDemo(Scene):
-    """
-    Edit INPUT_PATH and DEMO_REGION_INDICES to pick which regions you want to animate.
-    """
+    """Animation for part 1, showing an actual packing algorithm"""
 
     INPUT_PATH = "p12_demo.txt"
     DEMO_REGION_INDICES = [0, 1]  # animate first 1–2 regions
+    CELL_SIZE = 0.55
+    PLACE_RUN_TIME = 0.9
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.to_delete = []
+        self.highlight = None
 
     def construct(self):
         # Read puzzle
@@ -373,16 +379,105 @@ class PresentPackingDemo(Scene):
 
         self.wait(0.6)
 
-    def animate_region(self, shapes: List[Shape], w: int, h: int, counts: List[int], *, region_idx: int):
-        # Layout frame: board (left) and sidebar (right)
-        subtitle = Text(f"Region {region_idx + 1}: {w}×{h}", font_size=30, color=BLUE_C)
-        subtitle.to_edge(UP)
-        self.play(FadeIn(subtitle, shift=DOWN * 0.1))
+    def create_title(self, w, h, region_idx: int):
+        title = Text(f"Region {region_idx + 1}: {w}×{h}", font_size=30, color=BLUE_C)
+        title.to_edge(UP)
+        self.play(FadeIn(title, shift=DOWN * 0.1))
         self.wait(0.5)
+        self.to_delete.append(title)
 
+    def create_board(self, w, h, wait_time=0.5):
+        """Create the board and frame"""
         board, board_cells = build_board_grid(w, h, cell_size=0.55)
         board.to_edge(LEFT, buff=0.8).shift(DOWN * 0.2)
+        board_frame = SurroundingRectangle(board, buff=0.15).set_stroke(GREY_B, width=2)
+        self.play(Create(board), Create(board_frame))
+        self.wait(wait_time)
 
+        self.to_delete.append(board)
+        self.to_delete.append(board_frame)
+
+        return board, board_cells, board_frame
+
+    def create_sidebar(self, shapes, counts, wait_time=2):
+        """Create the sidebar showing how many of which shapes are needed"""
+        sidebar_title = Text("Pieces needed", font_size=28)
+        sidebar_title.to_edge(RIGHT, buff=0.8).shift(UP * 2.8)
+
+        rows: List[VGroup] = []
+        used_shape_indices = [i for i, c in enumerate(counts) if c > 0]
+        shape_to_row = {s_idx: k for k, s_idx in enumerate(used_shape_indices)}
+        for s_idx in used_shape_indices:
+            icon = build_shape_icon(shapes[s_idx], cell_size=0.20)
+            label = Text(f"x {counts[s_idx]}", font_size=24)
+            row = VGroup(icon, label).arrange(RIGHT, buff=0.35)
+            rows.append(row)
+
+        sidebar = VGroup(*rows).arrange(DOWN, aligned_edge=LEFT, buff=0.25)
+        sidebar.next_to(sidebar_title, DOWN, aligned_edge=ORIGIN, buff=0.35)
+        sidebar.to_edge(ORIGIN, buff=0.8).shift(DOWN * 0.2)
+        self.play(FadeIn(sidebar_title), FadeIn(sidebar))
+        self.wait(wait_time)
+
+        self.to_delete.append(sidebar)
+        self.to_delete.append(sidebar_title)
+
+        return rows, shape_to_row
+
+    def create_end_marker(self, board_frame, ok_result):
+        """Create the success or failure end marker"""
+        if ok_result is True:
+            mark = Text("✓", font_size=90, color=GREEN).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
+            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=GREEN), run_time=0.5)
+            self.to_delete.append(mark)
+        elif ok_result is False:
+            mark = Text("✗", font_size=90, color=RED).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
+            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=RED), run_time=0.5)
+            self.to_delete.append(mark)
+
+    def highlight_row(self, rows, shape_to_row, shape_idx):
+        """Draw a highlight or move it to a particular shape's row"""
+        if shape_idx not in shape_to_row:
+            raise ValueError("Something has gone terribly wrong! We cannot select a shape that was not drawn!")
+
+        target_row = rows[shape_to_row[shape_idx]]
+        if self.highlight is None:
+            self.highlight = SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
+            self.to_delete.append(self.highlight)
+            self.play(Create(self.highlight))
+        else:
+            self.play(
+                self.highlight.animate.become(
+                    SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
+                ),
+                run_time=0.12
+            )
+
+    def sidebar_waittime(self, region_idx: int):
+        """How long to wait after creating the sidebar"""
+        return 4 if region_idx == 0 else 2
+
+    def animate_region(self, shapes: List[Shape], w: int, h: int, counts: List[int], *, region_idx: int):
+        """An entire end-to-end animation for a region, showing the title, board and solution"""
+        self.highlight = None
+
+        # Layout frame: board (left) and sidebar (right)
+        self.create_title(w, h, region_idx)
+        _, board_cells, board_frame = self.create_board(w, h, 2 if region_idx == 0 else 0.5)
+        rows, shape_to_row = self.create_sidebar(shapes, counts, self.sidebar_waittime(region_idx))
+
+        ok_result = self.animate_solution(w, h, shapes, counts, rows, shape_to_row,
+                                          region_idx, board_frame, board_cells)
+
+        # End marker
+        self.create_end_marker(board_frame, ok_result)
+        self.wait(0.8)
+
+        # Clean up region visuals before next region
+        self.play(*[FadeOut(m) for m in self.to_delete], run_time=0.35)
+
+    def animate_solution(self, w, h, shapes, counts, rows, shape_to_row, region_idx, board_frame, board_cells):
+        """Animate just the solution for a problem"""
         # --- geometry helpers for ghost placements (including outside the board) ---
         cell0 = board_cells[0].get_center()
         dx = board_cells[1].get_center() - board_cells[0].get_center() if w > 1 else (RIGHT * 0.55)
@@ -402,28 +497,6 @@ class PresentPackingDemo(Scene):
                 g.add(sq)
             return g
 
-        board_frame = SurroundingRectangle(board, buff=0.15).set_stroke(GREY_B, width=2)
-        self.play(Create(board), Create(board_frame))
-        self.wait(2 if region_idx == 0 else 0.5)
-
-        # Sidebar: required pieces with counts
-        sidebar_title = Text("Pieces needed", font_size=28)
-        sidebar_title.to_edge(RIGHT, buff=0.8).shift(UP * 2.8)
-
-        rows: List[VGroup] = []
-        used_shape_indices = [i for i, c in enumerate(counts) if c > 0]
-        for s_idx in used_shape_indices:
-            icon = build_shape_icon(shapes[s_idx], cell_size=0.20)
-            label = Text(f"x {counts[s_idx]}", font_size=24)
-            row = VGroup(icon, label).arrange(RIGHT, buff=0.35)
-            rows.append(row)
-
-        sidebar = VGroup(*rows).arrange(DOWN, aligned_edge=LEFT, buff=0.25)
-        sidebar.next_to(sidebar_title, DOWN, aligned_edge=ORIGIN, buff=0.35)
-        sidebar.to_edge(ORIGIN, buff=0.8).shift(DOWN * 0.2)
-        self.play(FadeIn(sidebar_title), FadeIn(sidebar))
-        self.wait(4 if region_idx == 0 else 2)
-
         # Run trace + animate it
         placed_stack: List[Tuple[int, Tuple[int, ...]]] = []  # (shape_idx, indices) for quick clearing
 
@@ -431,9 +504,6 @@ class PresentPackingDemo(Scene):
             return [board_cells[idx].animate.set_fill(color, opacity=opacity) for idx in indices]
 
         # Pre-map shape_idx -> sidebar row index
-        shape_to_row = {s_idx: k for k, s_idx in enumerate(used_shape_indices)}
-
-        highlight = None
         ok_result: Optional[bool] = None
         ghost: Optional[VGroup] = None
 
@@ -441,18 +511,7 @@ class PresentPackingDemo(Scene):
         for event, payload in solve_with_trace(w, h, shapes, counts, step_limit=10000):
             if event == "focus_piece":
                 s_idx = payload["shape_idx"]
-                if s_idx in shape_to_row:
-                    target_row = rows[shape_to_row[s_idx]]
-                    if highlight is None:
-                        highlight = SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
-                        self.play(Create(highlight))
-                    else:
-                        self.play(
-                            highlight.animate.become(
-                                SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
-                            ),
-                            run_time=0.12
-                        )
+                self.highlight_row(rows, shape_to_row, s_idx)
 
             elif event in ("try_oob", "try_overlap", "try_ok"):
                 # remove previous ghost
@@ -460,7 +519,6 @@ class PresentPackingDemo(Scene):
                     self.remove(ghost)
                     ghost = None
 
-                s_idx = payload["shape_idx"]
                 coords = payload["coords"]
 
                 if event == "try_ok":
@@ -511,90 +569,20 @@ class PresentPackingDemo(Scene):
                 ok_result = False
                 break
 
-        # End marker
-        to_remove = [subtitle, board, board_frame, sidebar_title, sidebar]
-        if ok_result is True:
-            mark = Text("✓", font_size=90, color=GREEN).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
-            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=GREEN), run_time=0.5)
-            to_remove.append(mark)
-        elif ok_result is False:
-            mark = Text("✗", font_size=90, color=RED).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
-            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=RED), run_time=0.5)
-            to_remove.append(mark)
-
-        if highlight is not None:
-            to_remove.append(highlight)
-
-        self.wait(0.6)
-
-        # Clean up region visuals before next region
-        self.play(*[FadeOut(m) for m in to_remove], run_time=0.35)
+        return ok_result
 
 
+class PresentPackingAreaReveal(PresentPackingDemo):
+    """Follow-up animation showing the trick: only area actually matters due to specially crafted input"""
 
-class PresentPackingAreaReveal(Scene):
-    """
-    A follow-up animation to PresentPackingDemo:
-
-    Instead of searching for a packing, we "break" each required present into its
-    individual unit squares, then simply drag those squares into the region.
-
-    The narrative: if total required area <= region area, then it fits.
-    """
-
-    INPUT_PATH = "p12_demo.txt"
     DEMO_REGION_INDICES = [0, 1, 2]
-    CELL_SIZE = 0.55
-    PLACE_RUN_TIME = 0.9
 
-    def construct(self):
-        with open(self.INPUT_PATH, "r", encoding="utf-8") as f:
-            shapes, regions = parse_input(f.read())
+    def sidebar_waittime(self, region_idx: int):
+        """How long to wait after creating the sidebar"""
+        return 2
 
-        for demo_i, region_idx in enumerate(self.DEMO_REGION_INDICES):
-            w, h, counts = regions[region_idx]
-            self.animate_area_region(shapes, w, h, counts, region_idx=region_idx)
-
-            if demo_i != len(self.DEMO_REGION_INDICES) - 1:
-                self.wait(0.35)
-
-        self.wait(0.6)
-
-    def animate_area_region(self, shapes: List[Shape], w: int, h: int, counts: List[int], *, region_idx: int):
-        subtitle = Text(f"Region {region_idx + 1}: {w}×{h}", font_size=30, color=BLUE_C)
-        subtitle.to_edge(UP)
-        self.play(FadeIn(subtitle, shift=DOWN * 0.1))
-        self.wait(0.5)
-
-        # Board
-        board, board_cells = build_board_grid(w, h, cell_size=0.55)
-        board.to_edge(LEFT, buff=0.8).shift(DOWN * 0.2)
-        board_frame = SurroundingRectangle(board, buff=0.15).set_stroke(GREY_B, width=2)
-        self.play(Create(board), Create(board_frame))
-
-        # Sidebar (same idea as your first animation)
-        sidebar_title = Text("Pieces needed", font_size=28)
-        sidebar_title.to_edge(RIGHT, buff=0.8).shift(UP * 2.8)
-
-        rows: List[VGroup] = []
-        used_shape_indices = [i for i, c in enumerate(counts) if c > 0]
-        for s_idx in used_shape_indices:
-            icon = build_shape_icon(shapes[s_idx], cell_size=0.20)
-            label = Text(f"x {counts[s_idx]}", font_size=24)
-            row = VGroup(icon, label).arrange(RIGHT, buff=0.35)
-            rows.append(row)
-
-        sidebar = VGroup(*rows).arrange(DOWN, aligned_edge=LEFT, buff=0.25)
-        sidebar.next_to(sidebar_title, DOWN, aligned_edge=ORIGIN, buff=0.35)
-        sidebar.to_edge(ORIGIN, buff=0.8).shift(DOWN * 0.2)
-
-        self.play(FadeIn(sidebar_title), FadeIn(sidebar))
-
-        # Area accounting text
-        needed = sum(counts[i] * shape_area(shapes[i]) for i in range(len(shapes)))
-        have = w * h
-        self.wait(0.25)
-
+    def animate_solution(self, w, h, shapes, counts, rows, shape_to_row, region_idx, board_frame, board_cells):
+        """Animate just the solution for a problem"""
         # We'll "fill" the board cells left-to-right, top-to-bottom.
         next_free = 0
         board_size = w * h
@@ -602,16 +590,12 @@ class PresentPackingAreaReveal(Scene):
         # A staging spot to show the current present before it "breaks"
         staging = board_frame.get_right() + RIGHT * 1.55 + UP * 0.8
 
-        # Subtle highlight rectangle for which piece type we're consuming
-        highlight = None
-        shape_to_row = {s_idx: k for k, s_idx in enumerate(used_shape_indices)}
-
         def present_mobject_for_shape(s_idx: int, color) -> VGroup:
             """Create a little 'rigid present' made of squares using the first orientation."""
             ori = shapes[s_idx].orientations[0]
             s = self.CELL_SIZE * 0.62  # smaller than board cells so it feels like an object
             squares = []
-            for (x, y) in ori.cells:
+            for x, y in ori.cells:
                 sq = Square(side_length=s)
                 sq.set_stroke(GREY_E, width=2)
                 sq.set_fill(color, opacity=0.85)
@@ -621,10 +605,10 @@ class PresentPackingAreaReveal(Scene):
 
             # Position squares in a grid-ish layout centered on the group
             # y grows downward in our coords, but manim y grows upward.
-            min_x = min(x for (_, x, _) in squares)
-            min_y = min(y for (_, _, y) in squares)
-            max_x = max(x for (_, x, _) in squares)
-            max_y = max(y for (_, _, y) in squares)
+            min_x = min(x for _, x, _ in squares)
+            min_y = min(y for _, _, y in squares)
+            max_x = max(x for _, x, _ in squares)
+            max_y = max(y for _, _, y in squares)
 
             for (sq, x, y) in squares:
                 dx = (x - (min_x + max_x) / 2.0) * s
@@ -633,7 +617,7 @@ class PresentPackingAreaReveal(Scene):
 
             return g
 
-        def place_unit_square(unit_sq: Square, target_idx: int, color):
+        def place_unit_square(unit_sq: Square, target_idx: int):
             """Move a floating unit square to a board cell and commit the color."""
             # If we're out of space, slam it against the frame and show red.
             if target_idx >= board_size:
@@ -653,21 +637,9 @@ class PresentPackingAreaReveal(Scene):
             )
 
         # Animate consuming each present
-        to_remove = list()
+        used_shape_indices = [i for i, c in enumerate(counts) if c > 0]
         for s_idx in used_shape_indices:
-            # highlight the sidebar row
-            if s_idx in shape_to_row:
-                target_row = rows[shape_to_row[s_idx]]
-                if highlight is None:
-                    highlight = SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
-                    self.play(Create(highlight), run_time=0.2)
-                else:
-                    self.play(
-                        highlight.animate.become(
-                            SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
-                        ),
-                        run_time=0.15,
-                    )
+            self.highlight_row(rows, shape_to_row, s_idx)
 
             color = PALETTE[s_idx % len(PALETTE)]
             for _ in range(counts[s_idx]):
@@ -678,25 +650,12 @@ class PresentPackingAreaReveal(Scene):
                 # Now drag each unit square to the grid, one after another
                 anims = []
                 for sq in list(piece.submobjects):
-                    to_remove.append(sq)
-                    anims.append(place_unit_square(sq, next_free, color))
+                    self.to_delete.append(sq)
+                    anims.append(place_unit_square(sq, next_free))
                     next_free += 1
 
                 self.play(LaggedStart(*anims, lag_ratio=0.06))
-                # NOTE: Don't remove `piece` here: its submobjects ARE the squares we just moved.
-                # (Removing the group would also remove the squares from the scene.)
 
-        # End marker + clean up
-        if needed <= have:
-            mark = Text("✓", font_size=90, color=GREEN).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
-            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=GREEN), run_time=0.5)
-        else:
-            mark = Text("✗", font_size=90, color=RED).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
-            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=RED), run_time=0.5)
-
-        self.wait(0.8)
-
-        to_remove.extend([subtitle, board, board_frame, sidebar_title, sidebar, mark])
-        if highlight is not None:
-            to_remove.append(highlight)
-        self.play(*[FadeOut(m) for m in to_remove], run_time=0.35)
+        needed = sum(counts[i] * shape_area(shapes[i]) for i in range(len(shapes)))
+        have = w * h
+        return needed <= have
