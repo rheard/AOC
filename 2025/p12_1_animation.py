@@ -5,7 +5,8 @@ from typing import Dict, Generator, Iterable, List, Optional, Tuple
 import re
 
 from manim import (
-    Scene, VGroup, Square, Text, Line, SurroundingRectangle,
+    AnimationGroup, LaggedStart,
+    Scene, VGroup, Square, Text, SurroundingRectangle,
     FadeIn, FadeOut, Create, Indicate, Circumscribe,
     LEFT, RIGHT, UP, DOWN, ORIGIN,
     WHITE, BLACK, GREY_B, GREY_E, BLUE_C,
@@ -527,4 +528,175 @@ class PresentPackingDemo(Scene):
         self.wait(0.6)
 
         # Clean up region visuals before next region
+        self.play(*[FadeOut(m) for m in to_remove], run_time=0.35)
+
+
+
+class PresentPackingAreaReveal(Scene):
+    """
+    A follow-up animation to PresentPackingDemo:
+
+    Instead of searching for a packing, we "break" each required present into its
+    individual unit squares, then simply drag those squares into the region.
+
+    The narrative: if total required area <= region area, then it fits.
+    """
+
+    INPUT_PATH = "p12_demo.txt"
+    DEMO_REGION_INDICES = [0, 1, 2]
+    CELL_SIZE = 0.55
+    PLACE_RUN_TIME = 0.9
+
+    def construct(self):
+        with open(self.INPUT_PATH, "r", encoding="utf-8") as f:
+            shapes, regions = parse_input(f.read())
+
+        for demo_i, region_idx in enumerate(self.DEMO_REGION_INDICES):
+            w, h, counts = regions[region_idx]
+            self.animate_area_region(shapes, w, h, counts, region_idx=region_idx)
+
+            if demo_i != len(self.DEMO_REGION_INDICES) - 1:
+                self.wait(0.35)
+
+        self.wait(0.6)
+
+    def animate_area_region(self, shapes: List[Shape], w: int, h: int, counts: List[int], *, region_idx: int):
+        subtitle = Text(f"Region {region_idx + 1}: {w}×{h}", font_size=30, color=BLUE_C)
+        subtitle.to_edge(UP)
+        self.play(FadeIn(subtitle, shift=DOWN * 0.1))
+        self.wait(0.5)
+
+        # Board
+        board, board_cells = build_board_grid(w, h, cell_size=0.55)
+        board.to_edge(LEFT, buff=0.8).shift(DOWN * 0.2)
+        board_frame = SurroundingRectangle(board, buff=0.15).set_stroke(GREY_B, width=2)
+        self.play(Create(board), Create(board_frame))
+
+        # Sidebar (same idea as your first animation)
+        sidebar_title = Text("Pieces needed", font_size=28)
+        sidebar_title.to_edge(RIGHT, buff=0.8).shift(UP * 2.8)
+
+        rows: List[VGroup] = []
+        used_shape_indices = [i for i, c in enumerate(counts) if c > 0]
+        for s_idx in used_shape_indices:
+            icon = build_shape_icon(shapes[s_idx], cell_size=0.20)
+            label = Text(f"x {counts[s_idx]}", font_size=24)
+            row = VGroup(icon, label).arrange(RIGHT, buff=0.35)
+            rows.append(row)
+
+        sidebar = VGroup(*rows).arrange(DOWN, aligned_edge=LEFT, buff=0.25)
+        sidebar.next_to(sidebar_title, DOWN, aligned_edge=ORIGIN, buff=0.35)
+        sidebar.to_edge(ORIGIN, buff=0.8).shift(DOWN * 0.2)
+
+        self.play(FadeIn(sidebar_title), FadeIn(sidebar))
+
+        # Area accounting text
+        needed = sum(counts[i] * shape_area(shapes[i]) for i in range(len(shapes)))
+        have = w * h
+        self.wait(0.25)
+
+        # We'll "fill" the board cells left-to-right, top-to-bottom.
+        next_free = 0
+        board_size = w * h
+
+        # A staging spot to show the current present before it "breaks"
+        staging = board_frame.get_right() + RIGHT * 1.55 + UP * 0.8
+
+        # Subtle highlight rectangle for which piece type we're consuming
+        highlight = None
+        shape_to_row = {s_idx: k for k, s_idx in enumerate(used_shape_indices)}
+
+        def present_mobject_for_shape(s_idx: int, color) -> VGroup:
+            """Create a little 'rigid present' made of squares using the first orientation."""
+            ori = shapes[s_idx].orientations[0]
+            s = self.CELL_SIZE * 0.62  # smaller than board cells so it feels like an object
+            squares = []
+            for (x, y) in ori.cells:
+                sq = Square(side_length=s)
+                sq.set_stroke(GREY_E, width=2)
+                sq.set_fill(color, opacity=0.85)
+                squares.append((sq, x, y))
+
+            g = VGroup(*[sq for (sq, _, _) in squares])
+
+            # Position squares in a grid-ish layout centered on the group
+            # y grows downward in our coords, but manim y grows upward.
+            min_x = min(x for (_, x, _) in squares)
+            min_y = min(y for (_, _, y) in squares)
+            max_x = max(x for (_, x, _) in squares)
+            max_y = max(y for (_, _, y) in squares)
+
+            for (sq, x, y) in squares:
+                dx = (x - (min_x + max_x) / 2.0) * s
+                dy = (-(y - (min_y + max_y) / 2.0)) * s
+                sq.shift(RIGHT * dx + UP * dy)
+
+            return g
+
+        def place_unit_square(unit_sq: Square, target_idx: int, color):
+            """Move a floating unit square to a board cell and commit the color."""
+            # If we're out of space, slam it against the frame and show red.
+            if target_idx >= board_size:
+                bump = board_frame.get_right() + RIGHT * 0.15
+                return AnimationGroup(
+                    unit_sq.animate.move_to(bump),
+                    Indicate(board_frame, color=RED),
+                    run_time=self.PLACE_RUN_TIME,
+                )
+
+            target = board_cells[target_idx]
+            unit_sq.set_stroke(target.get_stroke_color(), width=target.get_stroke_width())
+
+            return AnimationGroup(
+                unit_sq.animate.move_to(target.get_center()).scale_to_fit_width(target.width),
+                run_time=self.PLACE_RUN_TIME * 2 if region_idx == 0 else self.PLACE_RUN_TIME,
+            )
+
+        # Animate consuming each present
+        to_remove = list()
+        for s_idx in used_shape_indices:
+            # highlight the sidebar row
+            if s_idx in shape_to_row:
+                target_row = rows[shape_to_row[s_idx]]
+                if highlight is None:
+                    highlight = SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
+                    self.play(Create(highlight), run_time=0.2)
+                else:
+                    self.play(
+                        highlight.animate.become(
+                            SurroundingRectangle(target_row, buff=0.12).set_stroke(YELLOW, width=3)
+                        ),
+                        run_time=0.15,
+                    )
+
+            color = PALETTE[s_idx % len(PALETTE)]
+            for _ in range(counts[s_idx]):
+                # Show the present (rigid piece)
+                piece = present_mobject_for_shape(s_idx, color).move_to(staging)
+                self.play(FadeIn(piece, scale=1.05), run_time=0.2)
+
+                # Now drag each unit square to the grid, one after another
+                anims = []
+                for sq in list(piece.submobjects):
+                    to_remove.append(sq)
+                    anims.append(place_unit_square(sq, next_free, color))
+                    next_free += 1
+
+                self.play(LaggedStart(*anims, lag_ratio=0.06))
+                # NOTE: Don't remove `piece` here: its submobjects ARE the squares we just moved.
+                # (Removing the group would also remove the squares from the scene.)
+
+        # End marker + clean up
+        if needed <= have:
+            mark = Text("✓", font_size=90, color=GREEN).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
+            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=GREEN), run_time=0.5)
+        else:
+            mark = Text("✗", font_size=90, color=RED).next_to(board_frame, RIGHT, buff=0.35).shift(UP * 0.2)
+            self.play(FadeIn(mark, scale=1.1), Circumscribe(board_frame, color=RED), run_time=0.5)
+
+        self.wait(0.8)
+
+        to_remove.extend([subtitle, board, board_frame, sidebar_title, sidebar, mark])
+        if highlight is not None:
+            to_remove.append(highlight)
         self.play(*[FadeOut(m) for m in to_remove], run_time=0.35)
