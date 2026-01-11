@@ -3,9 +3,29 @@ from dataclasses import dataclass
 from functools import lru_cache
 import argparse
 import re
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
+import multiprocessing as mp
 
+# Globals set once per worker process
+_G_SHAPES = None  # type: ignore
 Coord = Tuple[int, int]
+
+
+def _init_worker(shapes):
+    """Pool initializer: store shapes in a process-global variable."""
+    global _G_SHAPES
+    _G_SHAPES = shapes
+
+
+def _region_worker(args) -> int:
+    """
+    Worker: returns 1 if region is solvable, else 0.
+    args is (w, h, counts_tuple)
+    """
+    w, h, counts = args
+    # _G_SHAPES is set by _init_worker
+    ok = can_region_fit(w, h, _G_SHAPES, list(counts))
+    return 1 if ok else 0
 
 
 @dataclass
@@ -285,8 +305,46 @@ def count_fitting_regions(text: str) -> int:
     return count
 
 
+def count_fitting_regions_parallel(
+    text: str,
+    jobs: Optional[int] = None,
+    chunksize: int = 1,
+) -> int:
+    """
+    Parallel count: dispatch each region to a worker process.
+
+    Args:
+        text: full puzzle input
+        jobs: number of processes (None -> mp.cpu_count())
+        chunksize: Pool chunk size (tune: 1-8 is usually fine)
+
+    Returns:
+        number of regions that can fit all presents
+    """
+    # If only 1 job, keep it simple and avoid Pool overhead
+    if jobs == 1:
+        return count_fitting_regions(text)
+
+    shapes, regions = parse_input(text)
+
+    # Convert counts to tuple so it's cheap to send / hash / reuse
+    work = [(w, h, tuple(counts)) for (w, h, counts) in regions]
+
+    with mp.Pool(processes=jobs, initializer=_init_worker, initargs=(shapes,)) as pool:
+        return sum(pool.imap_unordered(_region_worker, work, chunksize=chunksize))
+
+
 if __name__ == "__main__":
-    with open("p12.txt") as rb:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--file", type=str, default="p12.txt",
+                        help="Input file to run against.")
+    parser.add_argument("-j", "--jobs", type=int, default=None,
+                        help="Number of worker processes (default: CPU count). Use 1 to disable multiprocessing.")
+    parser.add_argument("--chunksize", type=int, default=1,
+                        help="Pool chunksize. Try 2, 4, or 8 if you have many regions.")
+    args = parser.parse_args()
+
+    with open(args.file) as rb:
         puzzle_input = rb.read()
 
-    print(count_fitting_regions(puzzle_input))
+    print(count_fitting_regions_parallel(puzzle_input, jobs=args.jobs, chunksize=args.chunksize))
