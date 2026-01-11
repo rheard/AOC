@@ -55,8 +55,8 @@ def generate_unique_orientations(base_cells: List[Coord]) -> Shape:
     seen = set()
     out: List[Orientation] = []
 
-    for rot in range(4):
-        for flip in (False, True):
+    for flip in (False, True):
+        for rot in range(4):
             transformed = []
             for x, y in base:
                 xx, yy = x, y
