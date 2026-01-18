@@ -659,3 +659,197 @@ class PresentPackingAreaReveal(PresentPackingDemo):
         needed = sum(counts[i] * shape_area(shapes[i]) for i in range(len(shapes)))
         have = w * h
         return needed <= have
+
+# =========================
+# Orientation uniqueness demo (small "background" clip)
+# =========================
+
+def build_icon_from_cells(cells: Iterable[Coord], *, cell_size: float = 0.22, fill_color=WHITE) -> VGroup:
+    """
+    Build a tiny icon for an arbitrary set of occupied (x,y) cells.
+    Cells are assumed normalized to min corner at (0,0).
+    """
+    norm = normalize_cells(cells)
+    max_x = max(x for x, _ in norm)
+    max_y = max(y for _, y in norm)
+    w, h = max_x + 1, max_y + 1
+
+    icon_cells: List[Square] = []
+    cell_lookup: Dict[Coord, Square] = {}
+
+    for y in range(h):
+        for x in range(w):
+            sq = Square(side_length=cell_size)
+            sq.set_stroke(GREY_E, width=1)
+            sq.set_fill(BLACK, opacity=0.0)
+            icon_cells.append(sq)
+            cell_lookup[(x, y)] = sq
+
+    icon_grid = VGroup(*icon_cells).arrange_in_grid(rows=h, cols=w, buff=0.0)
+    for (x, y) in norm:
+        cell_lookup[(x, y)].set_fill(fill_color, opacity=1.0)
+    return icon_grid
+
+
+class OrientationUniquenessDemo(Scene):
+    """
+    A short clip illustrating why we *deduplicate* the 8 naïve orientations
+    (4 rotations × mirrored 4 rotations).
+
+    It can cycle through multiple example shapes. Between examples, we fade
+    away everything except the title/subtitle.
+    """
+
+    def construct(self):
+        title = Text("Unique orientations", font_size=34, color=BLUE_C).to_edge(UP)
+        subtitle = Text("out of 4 rotations + 4 mirror rotations", font_size=26).next_to(title, DOWN, buff=0.18)
+        self.play(FadeIn(title, shift=DOWN * 0.1), FadeIn(subtitle, shift=DOWN * 0.1), run_time=0.5)
+        self.wait(1.0)
+
+        demos = [
+            (
+                "C piece",
+                [
+                    #   ###
+                    #   #..
+                    #   ###
+                    (0, 0), (1, 0), (2, 0),
+                    (0, 1),
+                    (0, 2), (1, 2), (2, 2),
+                ],
+                1.0,   # speed (1.0 = current)
+                2,     # highlight loops at end
+            ),
+            (
+                "I piece",
+                [
+                    #   ###
+                    #   .#.
+                    #   ###
+                    (0, 0), (1, 0), (2, 0),
+                    (1, 1),
+                    (0, 2), (1, 2), (2, 2),
+                ],
+                0.65,  # faster
+                1,
+            ),
+        ]
+
+        for demo_i, (label_text, base_cells, speed, loops) in enumerate(demos):
+            demo_group = self._animate_one_shape(base_cells, label_text=label_text, speed=speed, loops=loops)
+
+            # Fade away everything except title/subtitle before the next shape.
+            if demo_i != len(demos) - 1:
+                self.play(FadeOut(demo_group), run_time=0.35)
+                self.wait(0.15)
+
+        self.wait(0.4)
+
+    def _animate_one_shape(self, base_cells: List[Coord], *, label_text: str, speed: float, loops: int) -> VGroup:
+        """Animate the 8 naïve transforms and visibly dim the duplicates."""
+        base_shape = generate_unique_orientations(base_cells)
+
+        # Show the piece we are talking about (left).
+        big = build_icon_from_cells(base_shape.orientations[0].cells, cell_size=0.34).scale(1.15)
+        big_box = SurroundingRectangle(big, buff=0.20).set_stroke(GREY_B, width=2)
+
+        piece_label = Text(label_text, font_size=24, color=GREY_B)
+        piece_label.next_to(big_box, DOWN, buff=0.25)
+
+        big_group = VGroup(big, big_box, piece_label).to_edge(LEFT, buff=0.9).shift(DOWN * 0.2)
+        self.play(FadeIn(big_group, scale=1.02), run_time=0.45 * speed)
+        self.wait(0.45 * speed)
+
+        # Precompute all 8 transformations *including duplicates*, and map duplicates -> first occurrence.
+        transforms: List[Tuple[bool, int, Tuple[Coord, ...]]] = []
+        for flip in (False, True):
+            for rot in range(4):
+                transformed: List[Coord] = []
+                for x, y in normalize_cells(base_cells):
+                    xx, yy = x, y
+                    for _ in range(rot):
+                        xx, yy = -yy, xx
+                    if flip:
+                        xx = -xx
+                    transformed.append((xx, yy))
+                key = normalize_cells(transformed)
+                transforms.append((flip, rot, key))
+
+        first_of: Dict[Tuple[Coord, ...], int] = {}
+        dup_of: List[Optional[int]] = [None] * 8
+        for i, (_, _, key) in enumerate(transforms):
+            if key in first_of:
+                dup_of[i] = first_of[key]
+            else:
+                first_of[key] = i
+
+        # Build the 2×4 "naïve" orientation grid on the right.
+        slots = VGroup()
+        for _ in range(8):
+            box = SurroundingRectangle(Square(side_length=0.9), buff=0.22).set_stroke(GREY_B, width=2)
+            slots.add(box)
+
+        slots.arrange_in_grid(rows=2, cols=4, buff=0.35)
+        slots.to_edge(RIGHT, buff=0.75).shift(DOWN * 0.25)
+
+        row0 = Text("rotate", font_size=22, color=GREY_B).next_to(slots[0], UP, buff=0.35).shift(LEFT * 1.45)
+        row1 = Text("mirror + rotate", font_size=22, color=GREY_B).next_to(slots[4], DOWN, buff=0.35).shift(LEFT * 1.05)
+
+        self.play(Create(slots), FadeIn(row0), FadeIn(row1), run_time=0.6 * speed)
+
+        slot_icons: List[VGroup] = []
+        slot_labels: List[Text] = []
+        dup_tags: List[Text] = []
+
+        def draw_slot(i: int, *, rt: float):
+            flip, rot, key = transforms[i]
+            icon = build_icon_from_cells(key, cell_size=0.20, fill_color=WHITE)
+            icon.move_to(slots[i].get_center())
+
+            deg = (rot * 90) % 360
+            lbl = Text(f"{deg}°", font_size=22, color=GREY_B).next_to(slots[i], DOWN, buff=0.08)
+
+            if dup_of[i] is not None:
+                icon.set_opacity(0.32)
+                self.play(FadeIn(icon), FadeIn(lbl), run_time=rt)
+
+                j = dup_of[i]
+                self.play(
+                    Indicate(slots[i], color=RED),
+                    Indicate(slots[j], color=YELLOW),
+                    run_time=0.35 * speed,
+                )
+
+                # If this is the *first* mirrored duplicate, call out the relation.
+                if i == 4 and j is not None:
+                    note = Text("mirror = rotate 180°", font_size=24, color=YELLOW).next_to(slots, UP, buff=0.35)
+                    self.play(FadeIn(note, shift=DOWN * 0.06), run_time=0.25 * speed)
+                    self.wait(0.35 * speed)
+                    self.play(FadeOut(note), run_time=0.2 * speed)
+
+            else:
+                self.play(FadeIn(icon), FadeIn(lbl), run_time=rt)
+
+            self.wait(0.25 * speed)
+            slot_icons.append(icon)
+            slot_labels.append(lbl)
+
+        # Draw the 8 naïve orientations, left-to-right.
+        for i in range(8):
+            draw_slot(i, rt=0.25 * speed)
+
+        # Summarize: unique count.
+        unique_count = len(first_of)
+        summary = Text(f"Unique = {unique_count} (not 8)", font_size=30, color=GREEN).next_to(slots, DOWN, buff=0.55)
+        self.play(FadeIn(summary, shift=DOWN * 0.12), run_time=0.4 * speed)
+
+        # Gentle highlights over the unique slots.
+        unique_slots = sorted(first_of.values())
+        for _ in range(max(0, loops)):
+            for i in unique_slots:
+                self.play(Indicate(slots[i], color=GREEN), run_time=0.35 * speed)
+
+        self.wait(0.2 * speed)
+
+        # Group everything that should be faded out between demos.
+        return VGroup(big_group, slots, row0, row1, *slot_icons, *slot_labels, *dup_tags, summary)
